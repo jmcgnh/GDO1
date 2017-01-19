@@ -5,5 +5,5 @@ This repo contains code related to a garage door controller based on a design an
 
 http://secretsciencelab.com/diy-electric-imp-wifi-garage-opener-sensor-for-under-50-weekend-project/
 
-There is code that runs on the imp device, code that runs on the imp server and, I hope, code for an app that you can easily access with your cell phone.
+There is code that runs on the imp device, code that runs on the imp server and, I hope, code for a web app that you can easily access with your cell phone's browser.
 
