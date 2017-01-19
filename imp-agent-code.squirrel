@@ -1,1 +1,56 @@
 // Agent
+garageDoorState <- "closed";
+
+function requestHandler(request, response) {
+  try {
+    response.header("Access-Control-Allow-Origin", "*");
+
+    if ("garageDoor" in request.query) {
+        local code = request.query.garageDoor;
+        local dataKey = request.query.dataKey;
+        local url = "http://yourgaragedoorapp.appspot.com/rollcode"
+          + "?verify=" + code + "&dataKey=" + dataKey;
+        
+        // Verify rolling code provided against the saved code in your webapp's DB
+        // (and only allow authorized users to save rolling codes in DB).
+        // This extra security measure is optional. If you just want to 
+        // open the door without extra checks, call:
+        //    device.send("pulseDoor", code);
+        http.get(url).sendasync(function(resp) {
+            server.log(url);
+            server.log(resp.body);
+            local data = http.jsondecode(resp.body);
+            if (!device.isconnected()) {
+                server.log("garageDoor: Imp offline");
+            }
+            else if ("verify" in data && data.verify == "success") {
+                device.send("pulseDoor", code);
+            }
+            else {
+                server.log("garageDoor: Bad code " + code);
+            }
+        });
+    }
+    else if ("getStatus" in request.query) {
+        device.send("getDoorState", "");
+    }
+    else if ("showStatus" in request.query) {
+        response.send(200, garageDoorState);
+        return;
+    }
+    
+    // send a response back saying everything was OK.
+    response.send(200, "OK");
+  } catch (ex) {
+    response.send(500, "Internal Server Error: " + ex);
+  }
+}
+
+// register the HTTP handler
+http.onrequest(requestHandler);
+
+function saveDoorState(state) {
+    garageDoorState <- state;
+}
+
+device.on("doorState", saveDoorState);
