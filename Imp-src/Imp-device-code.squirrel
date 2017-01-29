@@ -8,6 +8,20 @@ function pulseDoorStop() {
     server.log("PULSE DOOR STOP");
     doorSwitch.write(0);
 }
+function closeDoor(data) {
+    local isOpen;
+    isOpen=getDoorState(data);
+    if( isOpen) {
+        pulseDoor(data);
+    }
+}
+function openDoor(data) {
+    local isOpen;
+    isOpen=getDoorState(data);
+    if(! isOpen) {
+        pulseDoor(data);
+    }
+}
 
 function getDoorState(data) {
     range <- Ultrasonic(trig, echo);
@@ -18,6 +32,7 @@ function getDoorState(data) {
     server.log("Door distance: " + range.read_cm() + " isOpen: " + isOpen);
     server.log("Door " + doorStateAsString(isOpen));
     agent.send("doorState", doorStateAsString(isOpen));
+    return isOpen;
 }
 function doorStateAsString(state) {
     if (state == 1)
@@ -86,6 +101,8 @@ trig.configure(DIGITAL_OUT,0);
 echo.configure(DIGITAL_IN);
 doorSwitch.configure(DIGITAL_OUT, 0);
 agent.on("pulseDoor", pulseDoor);
+agent.on("closedoor", closeDoor);
+agent.on("opendoor", openDoor);
 agent.on("getDoorState", getDoorState);
 
 getDoorState(0);
