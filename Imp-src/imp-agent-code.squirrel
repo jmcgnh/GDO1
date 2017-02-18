@@ -1,4 +1,4 @@
-// Agent
+//Agent
 // Log the URLs we need
 server.log("Operate garage door: " + http.agenturl() + "?command=n");
 server.log("commands include: pulsedoor, opendoor, closedoor, getstatus, showstatus");
@@ -21,10 +21,10 @@ function requestHandler(request, response) {
             device.send("pulseDoor", whichdoor);
         }
     if ("closedoor" in request.query) {
-            device.send("closedoor", whichdoor);
+            device.send("closeDoor", whichdoor);
         }
     if ("opendoor" in request.query) {
-            device.send("opendoor", whichdoor);
+            device.send("openDoor", whichdoor);
         }
     if ("getstatus" in request.query) {
             device.send("getDoorState", whichdoor);
@@ -43,8 +43,28 @@ function requestHandler(request, response) {
 // register the HTTP handler
 http.onrequest(requestHandler);
 
+// Set up the logging server address we will send to
+const PUBLIC_TOKEN = "ExampleExampleExample"; 
+const LOGGING_URL_BASE = "https://mydomain.com/input/";
+const PRIVATE_TOKEN = "ExampleExampleExample";
+
+function logdata(logMessage) {    
+    // Prepare the request with a JSON payload
+    local body = logMessage;
+    local extraHeaders = {"Phant-Private-Key" : PRIVATE_TOKEN };
+    
+    local request = http.post(LOGGING_URL_BASE + PUBLIC_TOKEN, extraHeaders, logMessage);
+
+    // Send the message
+    local incomingDataTable = request.sendsync();
+ 
+    // Display the received data
+    server.log("Code: " + incomingDataTable.statuscode + ". Message: " + incomingDataTable.body);
+}
+
 function saveDoorState(state) {
     garageDoorState <- state;
+    logdata( "status1=" + state + "&status2=" + "unknown");
 }
 
 device.on("doorState", saveDoorState);
