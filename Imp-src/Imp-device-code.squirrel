@@ -1,12 +1,17 @@
-// Device
 function pulseDoor(data) {
     server.log("PULSE DOOR START");
-    doorSwitch.write(1);
+    server.log("pulseDoor: data=" + data);
+    if( data == 1){
+       door1Switch.write(1);
+    } else if (data == 2){
+        door2Switch.write(1);
+    }
     imp.wakeup(3, pulseDoorStop);
 }
 function pulseDoorStop() {
     server.log("PULSE DOOR STOP");
-    doorSwitch.write(0);
+    door1Switch.write(0);
+    door2Switch.write(0);
 }
 function closeDoor(data) {
     local isOpen;
@@ -25,11 +30,13 @@ function openDoor(data) {
 
 function getDoorState(data) {
     range <- Ultrasonic(trig, echo);
+
     local isOpen = 0;
-    if (range.read_cm() < 40) {
+    local rangeVal = range.read_cm() ;
+    if (rangeVal < 60) {
         isOpen = 1;
     }
-    server.log("Door distance: " + range.read_cm() + " isOpen: " + isOpen);
+    server.log("Door distance: " + rangeVal + " isOpen: " + isOpen);
     server.log("Door " + doorStateAsString(isOpen));
     agent.send("doorState", doorStateAsString(isOpen));
     return isOpen;
@@ -47,7 +54,8 @@ class Ultrasonic {
     
     // pins
     _trig   = null;
-    _echo   = null;
+    _echo  = null;
+    _echo2  = null;
 
     // aliased methods
     _tw     = null;
@@ -95,14 +103,18 @@ class Ultrasonic {
 
 trig <- hardware.pin1;
 echo <- hardware.pin2;
-doorSwitch <- hardware.pin7;
+echo2 <- hardware.pin5
+door1Switch <- hardware.pin7;
+door2Switch <- hardware.pin8
 
 trig.configure(DIGITAL_OUT,0);
 echo.configure(DIGITAL_IN);
-doorSwitch.configure(DIGITAL_OUT, 0);
+echo2.configure(DIGITAL_IN);
+door1Switch.configure(DIGITAL_OUT, 0);
+door1Switch.configure(DIGITAL_OUT, 0);
 agent.on("pulseDoor", pulseDoor);
-agent.on("closedoor", closeDoor);
-agent.on("opendoor", openDoor);
+agent.on("closeDoor", closeDoor);
+agent.on("openDoor", openDoor);
 agent.on("getDoorState", getDoorState);
 
 getDoorState(0);
