@@ -1,33 +1,35 @@
 // Agent
-// Log the URLs we need
-server.log("Operate garage door: " + http.agenturl() + "?command=n");
-server.log("commands include: pulsedoor, opendoor, closedoor, getstatus, showstatus");
-server.log("currently value 'n' is ignored, but could indicate which door to operate");
+// GDO1 simplified, minimal version 2017-03-14
 
-garageDoorState <- "closed"; // assumption
-local whichdoor = 1;
+// Log the URLs we can use
+server.log("Operate garage door: " + http.agenturl() + "?command");
+server.log("commands include: pulsedoor, getstatus, showstatus");
 
+// this variable remembers the state of the garage door between requests
+garageDoorState <- "closed"; // Assumed at start
+
+// set up agent's main handler for outside requests
 function requestHandler(request, response) {
   try {
     response.header("Access-Control-Allow-Origin", "*");
-    server.log( "request looks like: " + http.jsonencode( request));
-    server.log( "request.query looks like: " + http.jsonencode( request.query));
-    
+
     if (!device.isconnected()) {
-            server.log("pulseDoor: Imp offline");
+            server.log("Error: Imp offline");
             throw "imp offline";
             }
+    // note that query could contain more than one request
+    // but the door state may not change immediately after a
+    // pulsedoor request because the actual garage door
+    // may take 10-20 seconds to open or close or even after a
+    // getstatus request because the device has to respond 
+    // before a new state gets recorded - this delay will
+    // have to be taken into account by the app or user
+    // making the requests
     if ("pulsedoor" in request.query) {
-            device.send("pulseDoor", whichdoor);
-        }
-    if ("closedoor" in request.query) {
-            device.send("closedoor", whichdoor);
-        }
-    if ("opendoor" in request.query) {
-            device.send("opendoor", whichdoor);
+            device.send("pulseDoor", 0);
         }
     if ("getstatus" in request.query) {
-            device.send("getDoorState", whichdoor);
+            device.send("getDoorState", 0);
         }
     if ("showstatus" in request.query) {
             response.send(200, garageDoorState);
@@ -43,8 +45,10 @@ function requestHandler(request, response) {
 // register the HTTP handler
 http.onrequest(requestHandler);
 
+// set up handler for responses from device
 function saveDoorState(state) {
     garageDoorState <- state;
+    server.log("Door state: " + garageDoorState);
 }
 
 device.on("doorState", saveDoorState);
