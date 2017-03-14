@@ -93,7 +93,7 @@ class Ultrasonic {
         return (_ee - _es);
     }
     
-    // conversion functions, based on the speed of sound times 2
+    // conversion functions, based on the speed of sound
     // (it's a round trip time, there and back)
     // 331 m/s at 0 C, 343 m/s at 20 C => 
     // 0.017 centimeters per microsecond (including factor of 2)
@@ -103,8 +103,7 @@ class Ultrasonic {
     // 0.0068 inches per microsecond (including factor of 2)
     function read_in() {
          return echo_time() * 0.0068;
-         }
-         
+         }      
 }
 
 // hardware pin assignments and wiring to sensor and relay
