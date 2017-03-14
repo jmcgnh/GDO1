@@ -1,10 +1,9 @@
-// Agent
 // Log the URLs we need
 server.log("Operate garage door: " + http.agenturl() + "?command=n");
 server.log("commands include: pulsedoor, opendoor, closedoor, getstatus, showstatus");
-server.log("currently value 'n' is ignored, but could indicate which door to operate");
 
-garageDoorState <- "closed"; // assumption
+garageDoor1State <- "closed"; // assumption
+garageDoor2State <- "closed"; // assumption
 local whichdoor = 1;
 
 function requestHandler(request, response) {
@@ -18,19 +17,19 @@ function requestHandler(request, response) {
             throw "imp offline";
             }
     if ("pulsedoor" in request.query) {
-            device.send("pulseDoor", whichdoor);
+            device.send("pulseDoor", request.query.pulsedoor);
         }
     if ("closedoor" in request.query) {
-            device.send("closedoor", whichdoor);
+            device.send("closeDoor", request.query.closedoor);
         }
     if ("opendoor" in request.query) {
-            device.send("opendoor", whichdoor);
+            device.send("openDoor", request.query.opendoor);
         }
     if ("getstatus" in request.query) {
-            device.send("getDoorState", whichdoor);
+            device.send("getDoorState", request.query.getstatus);
         }
     if ("showstatus" in request.query) {
-            response.send(200, garageDoorState);
+            response.send(200, "1: " + garageDoor1State + "  2: " + garageDoor2State);
             return;
         }
     // normal response
@@ -43,8 +42,40 @@ function requestHandler(request, response) {
 // register the HTTP handler
 http.onrequest(requestHandler);
 
-function saveDoorState(state) {
-    garageDoorState <- state;
+// Set up the logging server address we will send to
+const PUBLIC_TOKEN = "WNDG9zYMEGTX8WOApKN1hvk3XJ3"; 
+const LOGGING_URL_BASE = "https://gddb.jmcg.us:48167/input/";
+const PRIVATE_TOKEN = "0XgYP6LdDYTLMAyYZEaltLpKg0K";
+
+function logdata(logMessage) {    
+    // Prepare the request with a JSON payload
+    local body = logMessage;
+    local extraHeaders = {"Phant-Private-Key" : PRIVATE_TOKEN };
+    
+    local request = http.post(LOGGING_URL_BASE + PUBLIC_TOKEN, extraHeaders, logMessage);
+
+    // Send the message
+    local incomingDataTable = request.sendsync();
+ 
+    // Display the received data
+    server.log("Code: " + incomingDataTable.statuscode + ". Message: " + incomingDataTable.body);
 }
 
-device.on("doorState", saveDoorState);
+function logit() {
+    logdata( "status1=" + garageDoor1State + "&status2=" + garagedoor2State);
+}
+
+function saveDoor1State(state) {
+    garageDoor1State <- state;
+    logit();
+}
+
+device.on("door2State", saveDoor2State);
+
+function saveDoor2State(state) {
+    garageDoor2State <- state;
+    logit();
+}
+
+device.on("door1State", saveDoor1State);
+device.on("door2State", saveDoor2State);
