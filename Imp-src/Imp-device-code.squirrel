@@ -1,39 +1,40 @@
 // Device
+// Simplified, minimal version 2017-03-14
+
+// close the relay to simulate pushing the button and set up call to unpush it in 3 seconds
 function pulseDoor(data) {
-    server.log("PULSE DOOR START");
+    // server.log("PULSE DOOR START"); // DEBUG
     doorSwitch.write(1);
     imp.wakeup(3, pulseDoorStop);
 }
+
+// open the relay to end the pulseDoor action
 function pulseDoorStop() {
-    server.log("PULSE DOOR STOP");
+    // server.log("PULSE DOOR STOP"); //DEBUG
     doorSwitch.write(0);
 }
-function closeDoor(data) {
-    local isOpen;
-    isOpen=getDoorState(data);
-    if( isOpen) {
-        pulseDoor(data);
-    }
-}
-function openDoor(data) {
-    local isOpen;
-    isOpen=getDoorState(data);
-    if(! isOpen) {
-        pulseDoor(data);
-    }
-}
 
+// use the ultrasonic sensor to determine if door is open or closed
 function getDoorState(data) {
     range <- Ultrasonic(trig, echo);
     local isOpen = 0;
-    if (range.read_cm() < 40) {
+    local distance = range.read_cm(); //centimeters
+    
+    // the value "60" used here is greater than the distance between the sensor and
+    // the garage door when it is "up", but less than the distance between the sensor
+    // and the floor. If the sensor is positioned so that it can see the vehicle, you
+    // may have to tune the value carefully to distinguish between the two situations.
+    if (distance < 60) { // centimeters
         isOpen = 1;
     }
-    server.log("Door distance: " + range.read_cm() + " isOpen: " + isOpen);
-    server.log("Door " + doorStateAsString(isOpen));
+    // uncomment the following line when trying to tune the distance
+    // server.log("Door distance: " + distance + "  isOpen: " + isOpen); //DEBUG
+    
     agent.send("doorState", doorStateAsString(isOpen));
     return isOpen;
 }
+
+// translate boolean door state to string
 function doorStateAsString(state) {
     if (state == 1)
         return "open";
@@ -41,6 +42,7 @@ function doorStateAsString(state) {
     return "closed";
 }
 
+// I used HC-SRO4 ultrasonic rangefinder
 class Ultrasonic {
     // consts
     static TO = 500; // timeout in ms
@@ -70,39 +72,55 @@ class Ultrasonic {
         _er   = _trig.read.bindenv(_echo);
     }
 
-    function read_cm() {
+    // this function triggers a pulse and watches for the echo
+    function echo_time() {
         local st = _hm(); // start time for timeout
         // Quickly pulse the trig pin
         _tw(0); _tw(1); _tw(0);
 
-        // Wait for the rising edge on echo
+        // poll for the rising edge on echo
         while (_er() == 0 && (_hm() - st) < TO);
         _es = _hu();
 
-        // Time to the falling edge on echo
+        // poll watching for the falling edge on echo
         while (_er() == 1 && (_hm() - st) < TO);
         _ee = _hu();
         
-        server.log("echo start " + _es);
-        server.log("echo end " + _ee);
-        _ew=_ee - _es;
-        server.log("echo width " + _ew + " microsec");
-
+        // width is end minus start
+        _ew = _ee - _es;
+        
         if ((_hm() - st) >= TO) return -1;
-        return (_ee - _es)/58.0;
+        // server.log( "echo width= " + _ew); //DEBUG
+        return (_ee - _es);
     }
+    
+    // conversion functions, based on the speed of sound
+    // (it's a round trip time, there and back)
+    // 331 m/s at 0 C, 343 m/s at 20 C; call it 340
+    //  => 0.017 centimeters per microsecond (including factor of 2)
+    function read_cm() {
+         return echo_time() * 0.017
+         }
+    //  => 0.0068 inches per microsecond (including factor of 2)
+    function read_in() {
+         return echo_time() * 0.0068;
+         }
+         
 }
 
+// hardware pin assignments and wiring to sensor and relay
+// are shown in accompanying diagram
 trig <- hardware.pin1;
 echo <- hardware.pin2;
 doorSwitch <- hardware.pin7;
 
+// initialize pins
 trig.configure(DIGITAL_OUT,0);
 echo.configure(DIGITAL_IN);
 doorSwitch.configure(DIGITAL_OUT, 0);
+
+// set up handlers to respond to calls from agent
 agent.on("pulseDoor", pulseDoor);
-agent.on("closedoor", closeDoor);
-agent.on("opendoor", openDoor);
 agent.on("getDoorState", getDoorState);
 
 getDoorState(0);
