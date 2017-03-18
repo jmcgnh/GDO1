@@ -43,9 +43,9 @@ function requestHandler(request, response) {
 http.onrequest(requestHandler);
 
 // Set up the logging server address we will send to
-const PUBLIC_TOKEN = "WNDG9zYMEGTX8WOApKN1hvk3XJ3"; 
-const LOGGING_URL_BASE = "https://gddb.jmcg.us:48167/input/";
-const PRIVATE_TOKEN = "0XgYP6LdDYTLMAyYZEaltLpKg0K";
+const PUBLIC_TOKEN = "ExampleExampleExample"; 
+const LOGGING_URL_BASE = "https://myhost.mydomain.tld:PORTNO/input/";
+const PRIVATE_TOKEN = "ExampleExampleExample";
 
 function logdata(logMessage) {    
     // Prepare the request with a JSON payload
