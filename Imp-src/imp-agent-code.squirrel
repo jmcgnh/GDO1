@@ -1,6 +1,8 @@
 // Log the URLs we need
+// Last change: 2017-05-29
 server.log("Operate garage door: " + http.agenturl() + "?command=n");
 server.log("commands include: pulsedoor, opendoor, closedoor, getstatus, showstatus");
+server.log("currently value 'n' is ignored, but could indicate which door to operate");
 
 garageDoor1State <- "closed"; // assumption
 garageDoor2State <- "closed"; // assumption
@@ -18,6 +20,7 @@ function requestHandler(request, response) {
             }
     if ("pulsedoor" in request.query) {
             device.send("pulseDoor", request.query.pulsedoor);
+            logdata( "status1=" + "pulsed" + "&status2=" + "")
         }
     if ("closedoor" in request.query) {
             device.send("closeDoor", request.query.closedoor);
@@ -43,9 +46,9 @@ function requestHandler(request, response) {
 http.onrequest(requestHandler);
 
 // Set up the logging server address we will send to
-const PUBLIC_TOKEN = "ExampleExampleExample"; 
-const LOGGING_URL_BASE = "https://myhost.mydomain.tld:PORTNO/input/";
-const PRIVATE_TOKEN = "ExampleExampleExample";
+const PUBLIC_TOKEN = "WNDG9zYMEGTX8WOApKN1hvk3XJ3"; 
+const LOGGING_URL_BASE = "https://gddb.jmcg.us:41880/input/";
+const PRIVATE_TOKEN = "0XgYP6LdDYTLMAyYZEaltLpKg0K";
 
 function logdata(logMessage) {    
     // Prepare the request with a JSON payload
@@ -61,8 +64,14 @@ function logdata(logMessage) {
     server.log("Code: " + incomingDataTable.statuscode + ". Message: " + incomingDataTable.body);
 }
 
+// Logging to Thinger.io server on jmcg-thinger
+const THINGER_UID = "jmcgnh"
+const THINGER_DEV_ID = "GDO1"
+const THINGER_DEV_CRED = "4mtzL4eGuQ#8"
+// no further Thinger code, abandoned this approach for now
+
 function logit() {
-    logdata( "status1=" + garageDoor1State + "&status2=" + garagedoor2State);
+    logdata( "status1=" + garageDoor1State + "&status2=" + garageDoor2State);
 }
 
 function saveDoor1State(state) {
@@ -70,12 +79,11 @@ function saveDoor1State(state) {
     logit();
 }
 
-device.on("door2State", saveDoor2State);
-
 function saveDoor2State(state) {
     garageDoor2State <- state;
     logit();
 }
 
+device.on("doorState", saveDoor1State);
 device.on("door1State", saveDoor1State);
 device.on("door2State", saveDoor2State);
