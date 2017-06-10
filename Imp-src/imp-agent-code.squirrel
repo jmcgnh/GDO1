@@ -1,9 +1,9 @@
 // Log the URLs we need
-// Last change: 2017-05-29
+// Last change: 2017-06-10
 server.log("Operate garage door: " + http.agenturl() + "?command=n");
 server.log("commands include: pulsedoor, opendoor, closedoor, getstatus, showstatus");
 server.log("currently value 'n' is ignored, but could indicate which door to operate");
-
+server.log("agent version " + imp.getsoftwareversion())
 garageDoor1State <- "closed"; // assumption
 garageDoor2State <- "closed"; // assumption
 local whichdoor = 1;
