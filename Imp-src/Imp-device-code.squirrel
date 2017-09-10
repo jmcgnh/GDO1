@@ -1,66 +1,139 @@
 // Device
-// Simplified, minimal version 2017-03-14
-
-// close the relay to simulate pushing the button and set up call to unpush it in 3 seconds
+// Last change: 2017-09-10
 function pulseDoor(data) {
-    // server.log("PULSE DOOR START"); // DEBUG
-    doorSwitch.write(1);
-    imp.wakeup(3, pulseDoorStop);
-}
-
-// open the relay to end the pulseDoor action
-function pulseDoorStop() {
-    // server.log("PULSE DOOR STOP"); //DEBUG
-    doorSwitch.write(0);
-}
-
-// use the ultrasonic sensor to determine if door is open or closed
-function getDoorState(data) {
-    range <- Ultrasonic(trig, echo);
-    local isOpen = 0;
-    local distance = range.read_cm(); //centimeters
-    
-    // the value "60" used here is greater than the distance between the sensor and
-    // the garage door when it is "up", but less than the distance between the sensor
-    // and the floor. If the sensor is positioned so that it can see the vehicle, you
-    // may have to tune the value carefully to distinguish between the two situations.
-    if (distance < 60) { // centimeters
-        isOpen = 1;
+    local timestamp = time();
+    if( timestamp - lastDoorOp < 60) {
+        server.log("PULSE DOOR REQUESTED TOO SOON");
+        // we just reject the request, no attempt to schedule a followup
+        return;
     }
-    // uncomment the following line when trying to tune the distance
-    // server.log("Door distance: " + distance + "  isOpen: " + isOpen); //DEBUG
-    
-    agent.send("doorState", doorStateAsString(isOpen));
-    return isOpen;
+    lastDoorOp = timestamp;
+    server.log("PULSE DOOR START");
+    dbglog("pulseDoor: data=" + data);
+    if( data == "1"){
+        dbglog("push door switch 1");
+        door1Switch.write(1);
+    } else if (data == "2"){
+        door2Switch.write(1);
+    }
+    imp.wakeup(2, pulseDoorStop);
+    // now schedule a getDoorState call for when the movment should be completed
+    if( reqRangeOp) imp.cancelwakeup( reqRangeOp);
+    reqRangeOpTime = timestamp + 30;
+    reqRangeOp = imp.wakeup( 30, getDoorState0 );
+    doorComment = " pulsed";
+}
+function pulseDoorStop() {
+    server.log("PULSE DOOR STOP");
+    door1Switch.write(0);
+    door2Switch.write(0);
 }
 
-// translate boolean door state to string
+function getDoorState(data) {
+    local timestamp = time();
+    local newdelay = 30;
+    if( ((timestamp - lastDoorOp) < 30)  || 
+        ((timestamp - lastRangeOp) < 5)) {
+        server.log("Too soon to get door status");
+        if( reqRangeOpTime < (timestamp + 30 )){
+            reqRangeOpTime = timestamp + 30;
+            if( reqRangeOp) imp.cancelwakeup( reqRangeOp);
+            reqRangeOp = imp.wakeup( 30, getDoorState0);
+            server.log( "rescheduled");
+        }
+        return;
+    }
+    range.read_cm();
+}
+function getDoorState0() {
+    getDoorState(0);
+}
+function getDoorState1(data) {
+    doorComment = " requested";
+    getDoorState(data);
+}
+function doneDoorState() {
+    local newDoorState = doorState;
+    if( (rangeVal < 0) || (rangeVal >400)) {
+        server.log( "Bad range" + rangeVal );
+        doorComment = " bad range";
+        newDoorState = -1;
+    } else {
+        newDoorState = ( rangeVal  < 50.0 ? 1 : 0);
+    }
+    if ( (newDoorState != doorState) || doorComment != "") { // send only if changed or requested
+        dbglog("Door state: " + reportDoorState(newDoorState, rangeVal));
+        doorState = newDoorState;
+        agent.send("doorState", reportDoorState(newDoorState, rangeVal));
+        doorComment = "";
+    } else {
+        dbglog("Door state: (unchanged) " + reportDoorState( doorState, rangeVal));
+    
+    }
+    reqRangeOpTime = time() + 45;
+    if( reqRangeOp ) imp.cancelwakeup( reqRangeOp);
+    reqRangeOp = imp.wakeup( 45, getDoorState0); // schedule another check
+    return newDoorState;
+}
 function doorStateAsString(state) {
-    if (state == 1)
+    if (state == 1) {
         return "open";
-    
-    return "closed";
+    } else if ( state == 0) {
+        return "closed";
+    }
+    return "unknown";
 }
-
-// I used HC-SRO4 ultrasonic rangefinder
+function reportDoorState( state, distance) {
+    return doorStateAsString(state) + " " + distance + doorComment;
+}
 class Ultrasonic {
     // consts
-    static TO = 500; // timeout in ms
+    static TO = 30; // timeout in ms
     
     // pins
     _trig   = null;
-    _echo   = null;
+    _echo  = null;
 
     // aliased methods
     _tw     = null;
     _er     = null;
     _hu     = null;
     _hm     = null;
+    _tocb   = null; // timeout callback
 
     // vars
+    _st     = null; // trigger start time in ms
     _es     = null; // echo start time
     _ee     = null; // echo end time
     _ew     = null; // echo width in us
+    _t0     = null; // time zero - DEBUG
+    _t1     = null; // trigger start time - DEBUG
+    _t2     = null; // trigger end time - DEBUG
+    _int1   = null; // interval measurement 1 - DEBUG
+    _int2   = null; // interval measurement 2 - DEBUG
+    _tocbw  = null; // callback pointer from timeout wakeup
+    _tout   = null; // timeout flag
+    _pws_seen = 0; // callback check - DEBUG
+
+    function _wd_to() {
+        server.log( "timeout reported");
+        _tout = 1;
+        _es = -1;
+        _ee = -1;
+        _echo.configure(DIGITAL_IN);
+        _finalize();
+    }
+    function _pws() { // pulse width start
+        _pws_seen ++;
+        if( _pws_seen == 1) {
+            _es = _hu();
+        } else if( _pws_seen == 2) {
+            _ee = _hu();
+            _echo.configure(DIGITAL_IN);
+            imp.cancelwakeup(_tocbw); 
+            _finalize();
+        }
+    }
 
     constructor(trig, echo) {
         _trig = trig;
@@ -69,60 +142,78 @@ class Ultrasonic {
         _hu   = hardware.micros.bindenv(hardware);
         _hm   = hardware.millis.bindenv(hardware);
         _tw   = _trig.write.bindenv(_trig);
-        _er   = _trig.read.bindenv(_echo);
+        _er   = _echo.read.bindenv(_echo);
+        _tocb = _wd_to.bindenv(this);
     }
 
-    // this function triggers a pulse and watches for the echo
-    function echo_time() {
-        local st = _hm(); // start time for timeout
+    function read_cm() {
+        _st = _hm(); // start time for timeout
+        _tout = 0; // timeout flag
+        _tocbw = imp.wakeup( (TO*0.001), _tocb); // schedule watchdog
+        _echo.configure( DIGITAL_IN, _pws.bindenv(this));
+        _t0 = _hu(); // timer timing - DEBUG
+        _t1 = _hu(); // start time for trigger - DEBUG
         // Quickly pulse the trig pin
         _tw(0); _tw(1); _tw(0);
-
-        // poll for the rising edge on echo
-        while (_er() == 0 && (_hm() - st) < TO);
-        _es = _hu();
-
-        // poll watching for the falling edge on echo
-        while (_er() == 1 && (_hm() - st) < TO);
-        _ee = _hu();
-        
-        // width is end minus start
-        _ew = _ee - _es;
-        
-        if ((_hm() - st) >= TO) return -1;
-        // server.log( "echo width= " + _ew); //DEBUG
-        return (_ee - _es);
+        _t2 = _hu(); // end time for trigger - DEBUG
+        // Wait for the rising edge on echo
     }
-    
-    // conversion functions, based on the speed of sound
-    // (it's a round trip time, there and back)
-    // 331 m/s at 0 C, 343 m/s at 20 C; call it 340
-    //  => 0.017 centimeters per microsecond (including factor of 2)
-    function read_cm() {
-         return echo_time() * 0.017
-         }
-    //  => 0.0068 inches per microsecond (including factor of 2)
-    function read_in() {
-         return echo_time() * 0.0068;
-         }
-         
+    function _finalize() {
+        dbglog("timeout flag " + _tout + "  pws seen " + _pws_seen);
+        _pws_seen = 0;
+        dbglog("echo start " + _es);
+        dbglog("echo end " + _ee);
+        _ew = _ee - _es;
+        dbglog("echo width " + _ew + " microsec");
+        _int1 = _t1 - _t0; // timer duration - DEBUG
+        _int2 = _t2 - _t1; // trigger duration - DEBUG
+        dbglog("timer duration " + _int1 + " trigger duration " + _int2 + " microsec")
+        if ((_hm() - _st) >= TO) {
+            rangeVal = -1;
+        } else {
+            rangeVal =(_ee - _es)/58.0; // centimeters
+        }
+    doneDoorState();
+    }
 }
 
-// hardware pin assignments and wiring to sensor and relay
-// are shown in accompanying diagram
+function setdebugflag( data) {
+    global_dbg = data;
+    server.log( "global_dbg = " + global_dbg);
+}
+
+function dbglog( msg) {
+    if( global_dbg ) {
+        server.log(msg);
+    }
+}
+
 trig <- hardware.pin1;
 echo <- hardware.pin2;
-doorSwitch <- hardware.pin7;
+echo2 <- hardware.pin5
+door1Switch <- hardware.pin7;
+door2Switch <- hardware.pin8;
+lastDoorOp <- (time() - 60);
+lastRangeOp <- (time() - 60);
+range <- Ultrasonic(trig, echo);
+rangeVal <- -1;
+doorState <- -1; // unknown
+doorComment <- " startup";
+reqRangeOp <- null;
+reqRangeOpTime <- -1;
+global_dbg <- 1;
 
-// initialize pins
 trig.configure(DIGITAL_OUT,0);
 echo.configure(DIGITAL_IN);
-doorSwitch.configure(DIGITAL_OUT, 0);
-
-// set up handlers to respond to calls from agent
+echo2.configure(DIGITAL_IN);
+door1Switch.configure(DIGITAL_OUT, 0);
+door2Switch.configure(DIGITAL_OUT, 0);
 agent.on("pulseDoor", pulseDoor);
-agent.on("getDoorState", getDoorState);
+agent.on("getDoorState", getDoorState1);
+agent.on("setdebugflag", setdebugflag);
+
 
 getDoorState(0);
 
 server.log("Imp online @ " + imp.getssid() + "!");
+server.log("device version " + imp.getsoftwareversion());
