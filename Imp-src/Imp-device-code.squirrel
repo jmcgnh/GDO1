@@ -1,5 +1,7 @@
-// Device
-// Last change: 2017-09-10
+// GDO1 Device
+// Last change: 2017-12-25
+
+// control the relay that simulates the garage door opener's pushbutton
 function pulseDoor(data) {
     local timestamp = time();
     if( timestamp - lastDoorOp < 60) {
@@ -16,19 +18,22 @@ function pulseDoor(data) {
     } else if (data == "2"){
         door2Switch.write(1);
     }
-    imp.wakeup(2, pulseDoorStop);
+    imp.wakeup(1, pulseDoorStop);
     // now schedule a getDoorState call for when the movment should be completed
     if( reqRangeOp) imp.cancelwakeup( reqRangeOp);
     reqRangeOpTime = timestamp + 30;
     reqRangeOp = imp.wakeup( 30, getDoorState0 );
     doorComment = " pulsed";
 }
+
+// called via wakeup to simulate release of pushbutton
 function pulseDoorStop() {
     server.log("PULSE DOOR STOP");
     door1Switch.write(0);
     door2Switch.write(0);
 }
 
+// initiate the sensing of the garage door status
 function getDoorState(data) {
     local timestamp = time();
     local newdelay = 30;
@@ -45,6 +50,8 @@ function getDoorState(data) {
     }
     range.read_cm();
 }
+
+// helper functions
 function getDoorState0() {
     getDoorState(0);
 }
@@ -52,11 +59,13 @@ function getDoorState1(data) {
     doorComment = " requested";
     getDoorState(data);
 }
+
+// This is the "outer" part of the door sensing event finalization
 function doneDoorState() {
     local newDoorState = doorState;
     if( (rangeVal < 0) || (rangeVal >400)) {
-        server.log( "Bad range" + rangeVal );
-        doorComment = " bad range";
+        server.log( "Bad range " + rangeVal );
+        doorComment = " bad range" + doorComment;
         newDoorState = -1;
     } else {
         newDoorState = ( rangeVal  < 50.0 ? 1 : 0);
@@ -75,6 +84,8 @@ function doneDoorState() {
     reqRangeOp = imp.wakeup( 45, getDoorState0); // schedule another check
     return newDoorState;
 }
+
+// helper functions
 function doorStateAsString(state) {
     if (state == 1) {
         return "open";
@@ -86,6 +97,9 @@ function doorStateAsString(state) {
 function reportDoorState( state, distance) {
     return doorStateAsString(state) + " " + distance + doorComment;
 }
+
+// This started with HCSR04.device.nut but Aaron and I have both made modifications
+// In particular see https://github.com/electricimp/reference/issues/46
 class Ultrasonic {
     // consts
     static TO = 30; // timeout in ms
@@ -114,23 +128,33 @@ class Ultrasonic {
     _tocbw  = null; // callback pointer from timeout wakeup
     _tout   = null; // timeout flag
     _pws_seen = 0; // callback check - DEBUG
+    _estate1 = -1; // last seen state of _echo
+    _estate2 = -1; // last seen state of _echo
 
+// invoked by wakeup from timeout
+// interrupt-level code, so no logging until after pin reconfigured to turn off interrupts
     function _wd_to() {
-        server.log( "timeout reported");
         _tout = 1;
-        _es = -1;
-        _ee = -1;
+        _ee = _hu();
+        _estate2 = _er();
         _echo.configure(DIGITAL_IN);
         _finalize();
     }
+    
+// invoked by state change on pin
+// interrupt-level code, so no logging until after pin reconfigured to turn off interrupts
     function _pws() { // pulse width start
+        local tnow = _hu();
+        local enow = _er();
         _pws_seen ++;
         if( _pws_seen == 1) {
-            _es = _hu();
+            _es = tnow;
+            _estate1 = enow;
         } else if( _pws_seen == 2) {
-            _ee = _hu();
+            imp.cancelwakeup(_tocbw);
+            _ee = tnow;
+            _estate2 = enow;
             _echo.configure(DIGITAL_IN);
-            imp.cancelwakeup(_tocbw); 
             _finalize();
         }
     }
@@ -146,10 +170,12 @@ class Ultrasonic {
         _tocb = _wd_to.bindenv(this);
     }
 
+// outer part of door sensing operation
     function read_cm() {
         _st = _hm(); // start time for timeout
         _tout = 0; // timeout flag
         _tocbw = imp.wakeup( (TO*0.001), _tocb); // schedule watchdog
+        _echo.configure(DIGITAL_IN);
         _echo.configure( DIGITAL_IN, _pws.bindenv(this));
         _t0 = _hu(); // timer timing - DEBUG
         _t1 = _hu(); // start time for trigger - DEBUG
@@ -158,9 +184,14 @@ class Ultrasonic {
         _t2 = _hu(); // end time for trigger - DEBUG
         // Wait for the rising edge on echo
     }
+
+// inner part of door sensing finalization; interrupts have been turned off
+// so logging is once again allowed
     function _finalize() {
         dbglog("timeout flag " + _tout + "  pws seen " + _pws_seen);
+        if( _tout) { server.log( "timeout reported"); }
         _pws_seen = 0;
+        dbglog("echo state 1 was " + _estate1 + "   echo state 2 was " + _estate2);
         dbglog("echo start " + _es);
         dbglog("echo end " + _ee);
         _ew = _ee - _es;
@@ -168,15 +199,13 @@ class Ultrasonic {
         _int1 = _t1 - _t0; // timer duration - DEBUG
         _int2 = _t2 - _t1; // trigger duration - DEBUG
         dbglog("timer duration " + _int1 + " trigger duration " + _int2 + " microsec")
-        if ((_hm() - _st) >= TO) {
-            rangeVal = -1;
-        } else {
-            rangeVal =(_ee - _es)/58.0; // centimeters
-        }
+        rangeVal =(_ee - _es)/58.0; // centimeters
+        dbglog("rangeVal = " + rangeVal);
     doneDoorState();
     }
 }
 
+// debugging helper functions
 function setdebugflag( data) {
     global_dbg = data;
     server.log( "global_dbg = " + global_dbg);
@@ -188,6 +217,7 @@ function dbglog( msg) {
     }
 }
 
+// initialization is set up here
 trig <- hardware.pin1;
 echo <- hardware.pin2;
 echo2 <- hardware.pin5
@@ -197,8 +227,6 @@ lastDoorOp <- (time() - 60);
 lastRangeOp <- (time() - 60);
 range <- Ultrasonic(trig, echo);
 rangeVal <- -1;
-doorState <- -1; // unknown
-doorComment <- " startup";
 reqRangeOp <- null;
 reqRangeOpTime <- -1;
 global_dbg <- 1;
@@ -208,12 +236,19 @@ echo.configure(DIGITAL_IN);
 echo2.configure(DIGITAL_IN);
 door1Switch.configure(DIGITAL_OUT, 0);
 door2Switch.configure(DIGITAL_OUT, 0);
+
+// set up handlers for requests from agent side
 agent.on("pulseDoor", pulseDoor);
 agent.on("getDoorState", getDoorState1);
 agent.on("setdebugflag", setdebugflag);
 
-
-getDoorState(0);
-
+// It's always nice to get these recorded in the log
 server.log("Imp online @ " + imp.getssid() + "!");
 server.log("device version " + imp.getsoftwareversion());
+
+// We do an initial sense of the door state at startup
+// This first operation has been giving unexpected and unexplained timeouts or short
+// range pulses which accounts for some of the debugging code.
+doorState <- -1; // unknown
+doorComment <- " startup";
+getDoorState(0);
