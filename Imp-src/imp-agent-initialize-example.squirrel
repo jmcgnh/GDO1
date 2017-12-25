@@ -1,0 +1,31 @@
+// Example code for initially setting up server-side saved settings
+server.log("agent version " + imp.getsoftwareversion())
+/// Initialize settings table, save with server.save()
+phantSettings<- {};
+
+phantSettings.URLbase <- "http://data.sparkfun.com/input/";
+phantSettings.publicToken <- "YOUR_PUBLIC_TOKEN"; 
+phantSettings.privateToken <- "YOUR_PRIVATE_KEY";
+
+local err = server.save(phantSettings);
+            if (err == 0) {
+                server.log("Settings saved");
+            } else {
+                server.error("Settings not saved. Error: " + err.tostring());
+            }
+/// The above initialization code should be removed from anything posted in public view
+/// if it contains your private customizations. This approach should let you publish your
+/// Electric Imp code AS-IS without having to censor it before uploading.
+
+// Check your results:
+local settings = server.load();
+
+// If no preferences have been saved, settings will be empty
+if (settings.len() != 0) {
+    // Settings table is NOT empty so set phantSettings from the loaded table
+    phantSettings = settings;
+    server.log( "settings looks like: " + http.jsonencode( settings));
+
+} else {
+    server.log("settings came back empty")
+}
