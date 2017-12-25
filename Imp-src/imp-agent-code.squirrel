@@ -1,12 +1,32 @@
+// GDO1 Agent
+// Last change: 2017-12-25
+
 // Log the URLs we need
-// Last change: 2017-09-10
 server.log("Operate garage door: " + http.agenturl() + "?command=n");
 server.log("commands include: pulsedoor, opendoor, closedoor, getstatus, showstatus, debugflag");
 server.log("currently value 'n' is ignored, but could indicate which door to operate");
-server.log("agent version " + imp.getsoftwareversion())
-garageDoor1State <- "closed"; // assumption
-garageDoor2State <- "closed"; // assumption
-local whichdoor = 1;
+
+// Always nice to see these in the log
+server.log("agent version " + imp.getsoftwareversion());
+
+garageDoor1State <- "unknown";
+garageDoor2State <- "unknown";
+
+phantSettings <- {};
+// Load the settings table in from permanent storage
+local settings = server.load();
+
+// If no preferences have been saved, settings will be empty
+if (settings.len() != 0) {
+    // Settings table is NOT empty so set the clockPrefs to the loaded table
+    phantSettings = settings;
+    server.log( "settings looks like: " + http.jsonencode( settings));
+
+} else {
+    // look for a file named imp-agent-initialization-example.squirrel on GitHub
+    // for how to set this up. The goal is to avoid publishing secrets in the repo.
+    server.log("settings came back empty")
+}
 
 function requestHandler(request, response) {
   try {
@@ -48,17 +68,15 @@ function requestHandler(request, response) {
 // register the HTTP handler
 http.onrequest(requestHandler);
 
-// Set up the logging server address we will send to
-const PUBLIC_TOKEN = "WNDG9zYMEGTX8WOApKN1hvk3XJ3"; 
-const LOGGING_URL_BASE = "https://gddb.jmcg.us:41880/input/";
-const PRIVATE_TOKEN = "0XgYP6LdDYTLMAyYZEaltLpKg0K";
-
+// Send data to logging server (currently Phant)
 function logdata(logMessage) {    
     // Prepare the request with a JSON payload
     local body = logMessage;
-    local extraHeaders = {"Phant-Private-Key" : PRIVATE_TOKEN };
-    
-    local request = http.post(LOGGING_URL_BASE + PUBLIC_TOKEN, extraHeaders, logMessage);
+    // These phantSettings are obtained with server.load()
+    // Not trying to be needlessly obscure, but you need to see example code for how this should be
+    // initialized for your settings (trying to keep credentials out of GitHub repos)
+    local extraHeaders = {"Phant-Private-Key" : phantSettings.privateToken };
+    local request = http.post(phantSettings.URLbase + phantSettings.publicToken, extraHeaders, logMessage);
 
     // Send the message
     local incomingDataTable = request.sendsync();
@@ -67,6 +85,7 @@ function logdata(logMessage) {
     server.log("Code: " + incomingDataTable.statuscode + ". Message: " + incomingDataTable.body);
 }
 
+// helper functions
 function logit() {
     logdata( "status1=" + garageDoor1State + "&status2=" + garageDoor2State);
 }
@@ -85,7 +104,12 @@ function setdebugflagoff() {
     device.send( "setdebugflag", 0);
 }
 
+// register handlers for responses coming back from device
 device.on("doorState", saveDoor1State);
 device.on("door1State", saveDoor1State);
 device.on("door2State", saveDoor2State);
+
+// I initially set the debugflag to 1, but generally I don't want that to
+// continue for very long as it generates a lot of extra agent traffic.
+// This automatically turns off debugging after 3 minutes.
 imp.wakeup( 180, setdebugflagoff);
