@@ -1,5 +1,5 @@
 // GDO1 Device
-// Last change: 2017-12-25
+// Last change: 2018-04-27
 
 // control the relay that simulates the garage door opener's pushbutton
 function pulseDoor(data) {
@@ -243,7 +243,11 @@ agent.on("getDoorState", getDoorState1);
 agent.on("setdebugflag", setdebugflag);
 
 // It's always nice to get these recorded in the log
-server.log("Imp online @ " + imp.getssid() + "!");
+local netData = imp.net.info();
+if ("active" in imp.net.info()) {
+    local ssId = netData.interface[netData.active].ssid;
+    server.log("Imp online @ " + ssId + "!");
+}
 server.log("device version " + imp.getsoftwareversion());
 
 // We do an initial sense of the door state at startup
