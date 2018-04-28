@@ -1,5 +1,5 @@
 // GDO1 Agent
-// Last change: 2018-04-27 (no real change since 2017-12-25)
+// Last change: 2018-04-28
 
 // Log the URLs we need
 server.log("Operate garage door: " + http.agenturl() + "?command=n");
@@ -72,6 +72,7 @@ http.onrequest(requestHandler);
 function logdata(logMessage) {    
     // Prepare the request with a JSON payload
     local body = logMessage;
+    server.log( "Logging message: " + logMessage);
     // These phantSettings are obtained with server.load()
     // Not trying to be needlessly obscure, but you need to see example code for how this should be
     // initialized for your settings (trying to keep credentials out of GitHub repos)
