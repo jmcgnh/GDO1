@@ -1,5 +1,5 @@
 // GDO1 Agent
-// Last change: 2017-12-25
+// Last change: 2018-04-27 (no real change since 2017-12-25)
 
 // Log the URLs we need
 server.log("Operate garage door: " + http.agenturl() + "?command=n");
